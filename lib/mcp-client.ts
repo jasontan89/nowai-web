@@ -23,6 +23,11 @@ export function getMcpApiKey(): string {
   return (process.env.NOWAI_MCP_API_KEY || "").trim();
 }
 
+export function getServiceNowInstanceUrl(): string {
+  const url = process.env.SERVICENOW_INSTANCE_URL || "https://dev312295.service-now.com";
+  return url.trim().replace(/\/+$/, "");
+}
+
 /**
  * Fetch list of tools from the remote NowAIKit MCP server with fallback to known tools
  */
@@ -51,7 +56,42 @@ export async function listMcpTools(): Promise<{ tools: MCPTool[]; fromCache: boo
       headers["Authorization"] = `Bearer ${apiKey}`;
     }
 
-    // Try standard MCP JSON-RPC tools/list
+    // 1. Try NowAIKit GET /api/tools endpoint first
+    try {
+      const toolsApiEndpoint = `${baseUrl}/api/tools`;
+      const toolsRes = await fetch(toolsApiEndpoint, {
+        method: "GET",
+        headers,
+        signal: controller.signal,
+      });
+      if (toolsRes.ok) {
+        const data = await toolsRes.json();
+        const remoteTools = data.tools || data.result?.tools || [];
+        if (Array.isArray(remoteTools) && remoteTools.length > 0) {
+          const formattedRemote: MCPTool[] = remoteTools.map((t: any) => ({
+            name: t.name,
+            description: t.description || "",
+            parameters: t.inputSchema || t.parameters,
+            category: categorizeTool(t.name),
+          }));
+
+          // Merge with DEFAULT_NOWAI_TOOLS to ensure core tools like get_table_record_count are guaranteed
+          const existingNames = new Set(formattedRemote.map((t) => t.name));
+          const merged = [
+            ...formattedRemote,
+            ...DEFAULT_NOWAI_TOOLS.filter((t) => !existingNames.has(t.name)),
+          ];
+
+          cachedTools = { tools: merged, timestamp: Date.now() };
+          clearTimeout(timeoutId);
+          return { tools: merged, fromCache: false };
+        }
+      }
+    } catch {
+      // Fallback to /mcp JSON-RPC
+    }
+
+    // 2. Try standard MCP JSON-RPC tools/list
     const mcpEndpoint = `${baseUrl}/mcp`;
     const res = await fetch(mcpEndpoint, {
       method: "POST",
@@ -78,12 +118,18 @@ export async function listMcpTools(): Promise<{ tools: MCPTool[]; fromCache: boo
           category: categorizeTool(t.name),
         }));
 
+        const existingNames = new Set(formattedTools.map((t) => t.name));
+        const merged = [
+          ...formattedTools,
+          ...DEFAULT_NOWAI_TOOLS.filter((t) => !existingNames.has(t.name)),
+        ];
+
         cachedTools = {
-          tools: formattedTools,
+          tools: merged,
           timestamp: Date.now(),
         };
 
-        return { tools: formattedTools, fromCache: false };
+        return { tools: merged, fromCache: false };
       }
     }
   } catch (err: any) {
@@ -110,6 +156,23 @@ export async function executeMcpTool(toolName: string, args: Record<string, any>
     throw new Error("NOWAI_MCP_URL is not configured in environment variables.");
   }
 
+  // Normalize tool and parameters dynamically
+  let finalTool = toolName;
+  const finalArgs = { ...args };
+
+  // Generic limit safety: If query_records is called without limit, default to 100
+  if (finalTool === "query_records" && (finalArgs.limit === undefined || finalArgs.limit === null)) {
+    finalArgs.limit = 100;
+  }
+  // Alias query_incidents to query_records with table 'incident'
+  if (finalTool === "query_incidents") {
+    finalTool = "query_records";
+    if (!finalArgs.table) finalArgs.table = "incident";
+    if (finalArgs.limit === undefined || finalArgs.limit === null) {
+      finalArgs.limit = 100;
+    }
+  }
+
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
@@ -128,8 +191,8 @@ export async function executeMcpTool(toolName: string, args: Record<string, any>
       method: "POST",
       headers,
       body: JSON.stringify({
-        name: toolName,
-        arguments: args,
+        name: finalTool,
+        arguments: finalArgs,
       }),
       signal: controller.signal,
     });

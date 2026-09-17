@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "test": "node --use-system-ca scripts/test-verification.mjs",
     "lint": "eslint"
   },
   "dependencies": {

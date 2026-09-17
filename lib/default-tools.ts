@@ -225,18 +225,41 @@ export const DEFAULT_NOWAI_TOOLS: MCPTool[] = [
     },
   },
 
-  // ─── Universal Table CRUD ───
+  // ─── Universal Table CRUD & Metrics ───
+  {
+    name: "get_table_record_count",
+    description: "Get the exact total record count for ANY ServiceNow table with optional encoded query filters. Always call this when finding, listing, or counting records to obtain the true total count in ServiceNow.",
+    category: "General",
+    parameters: {
+      type: "object",
+      properties: {
+        table: { type: "string", description: "ServiceNow table name (e.g. 'incident', 'sys_user', 'change_request', 'cmdb_ci')" },
+        query: { type: "string", description: "ServiceNow encoded query string (optional, e.g. 'active=true^priority=1')" },
+      },
+      required: ["table"],
+    },
+  },
+  {
+    name: "get_current_instance",
+    description: "Get the currently active ServiceNow instance name and base URL (e.g. https://dev312295.service-now.com).",
+    category: "General",
+    parameters: {
+      type: "object",
+      properties: {},
+    },
+  },
   {
     name: "query_records",
-    description: "Generic query against ANY ServiceNow table (e.g., incident, change_request, sys_user, cmdb_ci, sc_req_item).",
+    description: "Generic query against ANY ServiceNow table (e.g., incident, change_request, sys_user, cmdb_ci, sc_req_item). Returns matching records up to limit (default: 100).",
     category: "General",
     parameters: {
       type: "object",
       properties: {
         table: { type: "string", description: "ServiceNow table name (e.g. 'incident', 'sys_user', 'cmdb_ci')" },
         query: { type: "string", description: "ServiceNow encoded query string (e.g. 'active=true^priority=1')" },
-        limit: { type: "number", description: "Maximum number of records to return (default 50)" },
+        limit: { type: "number", description: "Maximum number of records to return (default: 100, max: 1000)" },
         fields: { type: "string", description: "Comma-separated list of field names to return (e.g. 'number,short_description,state,priority')" },
+        orderBy: { type: "string", description: "Field to sort by. Prefix with '-' for descending" },
       },
       required: ["table"],
     },

@@ -4,7 +4,8 @@ import React, { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
-import { Check, Copy } from "lucide-react";
+import { DataTable } from "./DataTable";
+import { Check, Copy, ExternalLink } from "lucide-react";
 
 interface MarkdownRendererProps {
   content: string;
@@ -89,23 +90,39 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) =
             );
           },
           table({ children }) {
-            return (
-              <div className="overflow-x-auto my-3 rounded-lg border border-slate-200 dark:border-slate-800 shadow-xs">
-                <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
-                  {children}
-                </table>
-              </div>
-            );
+            return <DataTable defaultPageSize={20}>{children}</DataTable>;
           },
           a({ href, children }) {
+            const isServiceNow = href?.includes("service-now.com");
+            const isListView = isServiceNow && href?.includes("_list.do");
+
+            if (isListView) {
+              return (
+                <a
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 my-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-xs hover:shadow-md transition-all active:scale-[0.98] no-underline"
+                >
+                  <span>{children}</span>
+                  <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                </a>
+              );
+            }
+
             return (
               <a
                 href={href}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 underline font-medium"
+                className={`inline-flex items-center gap-0.5 ${
+                  isServiceNow
+                    ? "text-blue-600 dark:text-blue-400 font-semibold hover:underline"
+                    : "text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 underline font-medium"
+                }`}
               >
-                {children}
+                <span>{children}</span>
+                {isServiceNow && <ExternalLink className="w-3 h-3 ml-0.5 opacity-70" />}
               </a>
             );
           },
