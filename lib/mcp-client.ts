@@ -23,9 +23,99 @@ export function getMcpApiKey(): string {
   return (process.env.NOWAI_MCP_API_KEY || "").trim();
 }
 
+let cachedDiscoveredInstanceUrl: string | null = null;
+
+/**
+ * Normalizes any user-provided ServiceNow URL or instance name:
+ * - "dev427849" -> "https://dev427849.service-now.com"
+ * - "dev427849.service-now.com" -> "https://dev427849.service-now.com"
+ * - "https://dev427849.service-now.com/" -> "https://dev427849.service-now.com"
+ */
+export function normalizeServiceNowUrl(raw?: string | null): string {
+  if (!raw) return "";
+  let val = raw.trim().replace(/^["']|["']$/g, "").replace(/\/+$/, "");
+  if (!val) return "";
+
+  // If user passed just the instance identifier, e.g. "dev427849"
+  if (/^dev\d+$/i.test(val) || (!val.includes(".") && !val.includes("/"))) {
+    return `https://${val.toLowerCase()}.service-now.com`;
+  }
+  // If user passed "dev427849.service-now.com" without protocol
+  if (!/^https?:\/\//i.test(val)) {
+    val = `https://${val}`;
+  }
+  return val.replace(/\/+$/, "");
+}
+
+/**
+ * Resolves the active ServiceNow instance URL in order of priority:
+ * 1. Explicit env variables: SN_INSTANCE_URL, SERVICENOW_INSTANCE_URL, SERVICENOW_URL
+ * 2. Auto-discovered instance URL from NowAIKit MCP server (via get_current_instance)
+ * 3. Default fallback: https://dev427849.service-now.com
+ */
 export function getServiceNowInstanceUrl(): string {
-  const url = process.env.SERVICENOW_INSTANCE_URL || "https://dev312295.service-now.com";
-  return url.trim().replace(/\/+$/, "");
+  const envUrl =
+    process.env.SN_INSTANCE_URL ||
+    process.env.SERVICENOW_INSTANCE_URL ||
+    process.env.SERVICENOW_URL ||
+    process.env.NEXT_PUBLIC_SN_INSTANCE_URL ||
+    process.env.NEXT_PUBLIC_SERVICENOW_INSTANCE_URL;
+
+  if (envUrl) {
+    const normalized = normalizeServiceNowUrl(envUrl);
+    if (normalized) return normalized;
+  }
+
+  if (cachedDiscoveredInstanceUrl) {
+    return cachedDiscoveredInstanceUrl;
+  }
+
+  return "https://dev427849.service-now.com";
+}
+
+/**
+ * Extract clean display name of current instance, e.g. "dev427849"
+ */
+export function getServiceNowInstanceName(): string {
+  const fullUrl = getServiceNowInstanceUrl();
+  try {
+    const host = new URL(fullUrl).hostname;
+    return host.replace(/\.service-now\.com$/i, "");
+  } catch {
+    return fullUrl;
+  }
+}
+
+/**
+ * Query NowAIKit MCP server for the active instance URL and cache it
+ */
+async function discoverInstanceUrl(baseUrl: string, apiKey: string): Promise<void> {
+  if (cachedDiscoveredInstanceUrl) return;
+  try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+    const res = await fetch(`${baseUrl}/api/tool`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ name: "get_current_instance", arguments: {} }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      const data = await res.json();
+      const discovered = data.result?.url || data.url;
+      if (discovered && typeof discovered === "string") {
+        cachedDiscoveredInstanceUrl = normalizeServiceNowUrl(discovered);
+      }
+    }
+  } catch {
+    // Non-fatal; env vars or fallback will be used
+  }
 }
 
 /**
@@ -84,6 +174,12 @@ export async function listMcpTools(): Promise<{ tools: MCPTool[]; fromCache: boo
 
           cachedTools = { tools: merged, timestamp: Date.now() };
           clearTimeout(timeoutId);
+
+          // Asynchronously discover current instance URL from NowAIKit MCP server if not set
+          if (!cachedDiscoveredInstanceUrl && baseUrl) {
+            discoverInstanceUrl(baseUrl, apiKey).catch(() => {});
+          }
+
           return { tools: merged, fromCache: false };
         }
       }
@@ -128,6 +224,10 @@ export async function listMcpTools(): Promise<{ tools: MCPTool[]; fromCache: boo
           tools: merged,
           timestamp: Date.now(),
         };
+
+        if (!cachedDiscoveredInstanceUrl && baseUrl) {
+          discoverInstanceUrl(baseUrl, apiKey).catch(() => {});
+        }
 
         return { tools: merged, fromCache: false };
       }

@@ -241,7 +241,7 @@ export const DEFAULT_NOWAI_TOOLS: MCPTool[] = [
   },
   {
     name: "get_current_instance",
-    description: "Get the currently active ServiceNow instance name and base URL (e.g. https://dev312295.service-now.com).",
+    description: "Get the currently active ServiceNow instance name and base URL (e.g. https://dev427849.service-now.com).",
     category: "General",
     parameters: {
       type: "object",

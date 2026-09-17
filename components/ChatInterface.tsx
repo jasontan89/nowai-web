@@ -17,6 +17,7 @@ import {
   Users,
   Radio,
   ArrowDown,
+  ExternalLink,
 } from "lucide-react";
 
 interface ChatInterfaceProps {
@@ -32,6 +33,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onLogout }) => {
     count: number;
     isColdStart?: boolean;
     loaded: boolean;
+    instanceUrl?: string;
+    instanceName?: string;
   }>({ count: 0, loaded: false });
   const [showScrollBottom, setShowScrollBottom] = useState(false);
 
@@ -52,6 +55,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onLogout }) => {
             count: data.count || 0,
             isColdStart: data.isColdStart,
             loaded: true,
+            instanceUrl: data.instanceUrl,
+            instanceName: data.instanceName,
           });
         }
       } catch (err) {
@@ -324,6 +329,20 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ onLogout }) => {
                 : "Connecting MCP..."}
             </span>
           </div>
+
+          {/* ServiceNow Instance Badge */}
+          {mcpStatus.instanceName && (
+            <a
+              href={mcpStatus.instanceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 transition-colors"
+              title={`Open ServiceNow instance: ${mcpStatus.instanceUrl}`}
+            >
+              <ExternalLink className="w-3 h-3" />
+              <span>SN: {mcpStatus.instanceName}</span>
+            </a>
+          )}
 
           <button
             type="button"

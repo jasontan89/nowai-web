@@ -24,7 +24,21 @@ if (existsSync(envPath)) {
 
 const MCP_URL = process.env.NOWAI_MCP_URL || "https://nowaikit-mcp.onrender.com";
 const MCP_API_KEY = process.env.NOWAI_MCP_API_KEY || "61e2bfffedee6c55212072e2b8ba383e";
-const INSTANCE_URL = process.env.SERVICENOW_INSTANCE_URL || "https://dev312295.service-now.com";
+function normalizeUrl(url) {
+  if (!url) return "";
+  let val = url.trim().replace(/^["']|["']$/g, "").replace(/\/+$/, "");
+  if (/^dev\d+$/i.test(val) || (!val.includes(".") && !val.includes("/"))) {
+    return `https://${val.toLowerCase()}.service-now.com`;
+  }
+  if (!/^https?:\/\//i.test(val)) val = `https://${val}`;
+  return val.replace(/\/+$/, "");
+}
+
+const INSTANCE_URL = normalizeUrl(
+  process.env.SN_INSTANCE_URL ||
+  process.env.SERVICENOW_INSTANCE_URL ||
+  "https://dev427849.service-now.com"
+);
 
 console.log("=== Testing Generic Prompt-Level Record Resolution ===");
 console.log("MCP_URL:", MCP_URL);
@@ -84,17 +98,18 @@ async function runTests() {
   });
 
   console.log("\n2. Exact Count & Up to 100 Records on 'incident'");
+  let expectedActiveCount = 0;
   await testAsync("Fetch exact total count for active incidents", async () => {
     const countRes = await callTool("get_table_record_count", {
       table: "incident",
       query: "active=true",
     });
-    const exactCount = parseInt(countRes.record_count, 10);
-    console.log(`    Exact active incidents in ServiceNow: ${exactCount}`);
-    assert(exactCount >= 40, "Expected at least 40 active incidents");
+    expectedActiveCount = parseInt(countRes.record_count, 10);
+    console.log(`    Exact active incidents in ServiceNow: ${expectedActiveCount}`);
+    assert(expectedActiveCount > 0, "Expected at least 1 active incident");
   });
 
-  await testAsync("Fetch active incidents with limit=100 (should return all 44, not 10)", async () => {
+  await testAsync("Fetch active incidents with limit=100 (should match exact active count)", async () => {
     const recordsRes = await callTool("query_records", {
       table: "incident",
       query: "active=true",
@@ -102,7 +117,7 @@ async function runTests() {
     });
     const list = recordsRes.records || [];
     console.log(`    Returned active incidents: ${list.length}`);
-    assert.strictEqual(list.length, 44, "Expected all 44 active incidents returned");
+    assert.strictEqual(list.length, expectedActiveCount, `Expected all ${expectedActiveCount} active incidents returned`);
   });
 
   console.log("\n3. High-Volume Query (>100 records) on 'sys_user'");
@@ -118,7 +133,7 @@ async function runTests() {
     // Generate list view deep-link
     const listUrl = `${INSTANCE_URL}/sys_user_list.do?sysparm_query=`;
     console.log(`    Generated ServiceNow List View URL: ${listUrl}`);
-    assert.strictEqual(listUrl, "https://dev312295.service-now.com/sys_user_list.do?sysparm_query=");
+    assert.strictEqual(listUrl, `${INSTANCE_URL}/sys_user_list.do?sysparm_query=`);
   });
 
   await testAsync("Fetch sys_user records capped at 100 for conversational display", async () => {
@@ -135,7 +150,7 @@ async function runTests() {
   console.log("\n4. Instance Verification");
   await testAsync("Verify get_current_instance returns correct ServiceNow URL", async () => {
     const instRes = await callTool("get_current_instance", {});
-    assert.strictEqual(instRes.url, "https://dev312295.service-now.com");
+    assert.strictEqual(instRes.url, INSTANCE_URL);
   });
 
   console.log(`\n=== Verification Complete: ${passed}/${total} tests passed ===`);

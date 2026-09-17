@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isRequestAuthenticated } from "@/lib/auth";
-import { listMcpTools } from "@/lib/mcp-client";
+import {
+  listMcpTools,
+  getServiceNowInstanceUrl,
+  getServiceNowInstanceName,
+} from "@/lib/mcp-client";
 import { SuggestionChip } from "@/lib/types";
 
 export async function GET(req: NextRequest) {
@@ -95,6 +99,8 @@ export async function GET(req: NextRequest) {
       fromCache,
       isColdStart,
       count: tools.length,
+      instanceUrl: getServiceNowInstanceUrl(),
+      instanceName: getServiceNowInstanceName(),
     });
   } catch (err: any) {
     console.error("[API /tools] Error:", err);
